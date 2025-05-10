@@ -1,69 +1,64 @@
-import sys
-import os
-import requests
-
-# Add parent directory to sys.path to import config.py
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from config import api_key
+import cv2
+import numpy as np
+from PIL import Image
+from models.manual_analysis import identify_machine
 
 class ImageAnalysisLLM:
     """
-    A class representing a Large Language Model (LLM) interface for image analysis using AIMLAPI.
+    Simplified LLM interface for image analysis.
+    Provides image type and rust-marked image.
     """
 
-    def __init__(self, api_key=api_key):
-        """
-        Initialize with the API key.
-        """
-        self.api_key = api_key
-        self.api_url = "https://api.aimlapi.com/v1/images/analyze"  # Replace with new API endpoint
+    def __init__(self):
+        pass
 
-    def analyze_image(self, image_path):
+    def analyze_image(self, pil_image):
         """
-        Call the AIMLAPI image analysis endpoint with the given image.
+        Analyze the image to get type and rust-marked image.
         Args:
-            image_path: Path to the image file to analyze.
+            pil_image: PIL Image object
         Returns:
-            Detailed analysis string or error message.
+            tuple: (image_type_str, rust_marked_pil_image)
         """
-        if not self.api_key:
-            return "API key not provided."
+        # Get image type using identify_machine
+        image_type = identify_machine(pil_image)
 
-        if not image_path or not isinstance(image_path, str):
-            return "Invalid image path."
+        # Convert PIL image to OpenCV format
+        cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Accept": "application/json"
-        }
+        # Rust detection and marking (improved)
+        hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+        # Define range for rust-like color (brownish-red)
+        lower_rust = np.array([5, 50, 50])
+        upper_rust = np.array([20, 255, 255])
+        mask = cv2.inRange(hsv, lower_rust, upper_rust)
 
-        try:
-            with open(image_path, "rb") as image_file:
-                files = {"image": image_file}
-                response = requests.post(self.api_url, headers=headers, files=files)
-            print("Response Status Code:", response.status_code)
-            print("Response Text:", response.text)
-            response.raise_for_status()
-            result = response.json()
-            # Assuming the API returns a 'description' field with the detailed analysis
-            if "description" in result:
-                return result["description"]
-            else:
-                return "No analysis data found in response."
-        except requests.exceptions.RequestException as e:
-            return f"API request failed: {str(e)}"
+        # Morphological operations to clean mask
+        kernel = np.ones((5,5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
-    def load_model(self, model_path):
-        """
-        Placeholder method to load a pre-trained LLM model.
-        Args:
-            model_path: Path to the model file.
-        """
-        # Implement model loading logic here
-        pass
+        # Find contours of rust areas
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    def close(self):
-        """
-        Placeholder method to release resources if needed.
-        """
-        pass
+        # Draw red contours on the image
+        cv2.drawContours(cv_image, contours, -1, (0, 0, 255), 3)
+
+        # Convert back to RGB for PIL
+        marked_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+        pil_marked_image = Image.fromarray(marked_image)
+
+        # Calculate rust percentage
+        rust_area = cv2.countNonZero(mask)
+        total_area = mask.shape[0] * mask.shape[1]
+        rust_percentage = (rust_area / total_area) * 100 if total_area > 0 else 0
+
+        # Determine rust status based on percentage thresholds
+        if rust_percentage < 5:
+            rust_status = "Low"
+        elif rust_percentage < 20:
+            rust_status = "Medium"
+        else:
+            rust_status = "High"
+
+        return image_type, pil_marked_image, rust_percentage, rust_status

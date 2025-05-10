@@ -63,9 +63,10 @@ def assess_condition(image: Image.Image) -> str:
     else:
         return "Good condition (sharp image)"
 
-def detect_rust(image: Image.Image) -> str:
+def detect_rust(image: Image.Image):
     """
     Simple heuristic to detect rust by identifying reddish-brown color regions.
+    Returns a tuple of (rust_message, rust_mask)
     """
     # Convert PIL Image to OpenCV format
     cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -79,11 +80,13 @@ def detect_rust(image: Image.Image) -> str:
     rust_ratio = np.sum(mask > 0) / (mask.shape[0] * mask.shape[1])
 
     if rust_ratio > 0.05:
-        return f"Significant rust detected ({rust_ratio*100:.1f}%)"
+        message = f"Significant rust detected ({rust_ratio*100:.1f}%)"
     elif rust_ratio > 0.01:
-        return f"Minor rust detected ({rust_ratio*100:.1f}%)"
+        message = f"Minor rust detected ({rust_ratio*100:.1f}%)"
     else:
-        return "No significant rust detected"
+        message = "No significant rust detected"
+
+    return message, mask
 
 def suggest_repurpose(condition: str) -> str:
     """

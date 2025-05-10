@@ -3,6 +3,10 @@ import tkinter as tk
 from tkinter import Label, filedialog, Button
 from PIL import Image, ImageTk
 from utils.video_utils import detect_motion  # Import your motion detection
+from PIL import Image
+from machine_vision_monitor.models.manual_analysis import detect_rust
+import numpy as np
+import cv2
 
 # Initialize root window
 root = tk.Tk()
@@ -37,12 +41,36 @@ def update_frame():
             status_label.config(text="Video playback ended", bg="gray", fg="white")
         return
 
+    rust_message = "No rust detection"
     if prev_frame is not None:
         motion_detected, score = detect_motion(prev_frame, frame)
+        # Convert frame to PIL Image for rust detection
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(frame_rgb)
+        rust_message, rust_mask = detect_rust(pil_image)
+
+        # Overlay red markings on rust areas
+        rust_mask_3ch = cv2.merge([rust_mask, rust_mask, rust_mask])
+        red_overlay = np.zeros_like(frame)
+        red_overlay[:, :] = (0, 0, 255)  # Red color in BGR
+        # Blend the red overlay where rust mask is present
+        frame = np.where(rust_mask_3ch > 0, cv2.addWeighted(frame, 0.5, red_overlay, 0.5, 0), frame)
+
+        # Update status label combining motion and rust detection
         if motion_detected:
-            status_label.config(text=f"Machine: ⚠ Warning (Score: {score})", bg="red", fg="white")
+            status_label.config(text=f"Machine: ⚠ Warning (Motion Score: {score}) | {rust_message}", bg="red", fg="white")
         else:
-            status_label.config(text=f"Machine: ✅ Normal (Score: {score})", bg="green", fg="white")
+            # If rust detected is significant, show warning in orange
+            if "Significant" in rust_message:
+                status_label.config(text=f"Machine: ⚠ Rust Alert | {rust_message}", bg="orange", fg="white")
+            else:
+                status_label.config(text=f"Machine: ✅ Normal | {rust_message}", bg="green", fg="white")
+    else:
+        # For first frame, just show rust detection if possible
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(frame_rgb)
+        rust_message, rust_mask = detect_rust(pil_image)
+        status_label.config(text=f"Machine: {rust_message}", bg="green", fg="white")
 
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     photo = ImageTk.PhotoImage(image=Image.fromarray(frame_rgb))

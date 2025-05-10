@@ -96,6 +96,8 @@ import tkinter.messagebox as messagebox
 from PIL import Image
 from models.manual_analysis import identify_machine, assess_condition, detect_rust, suggest_repurpose
 
+from llm_interface import ImageAnalysisLLM
+
 def analyze_image():
     # Prompt user to upload an image file
     file_path = filedialog.askopenfilename(title="Select Image for Analysis", filetypes=[("Image Files", "*.png *.jpg *.jpeg *.bmp")])
@@ -110,37 +112,46 @@ def analyze_image():
         messagebox.showerror("Error", f"Failed to open image: {str(e)}")
         return
 
-    # Perform manual analysis using stub functions
-    machine_name = identify_machine(image)
-    condition = assess_condition(image)
-    rust_status = detect_rust(image)
-    repurpose_suggestion = suggest_repurpose(condition)
-
-    # Format detailed response
-    result_text = (
-        f"Machine Name: {machine_name}\n"
-        f"Purpose: Used for metal forming and shaping\n"
-        f"Condition: {condition}\n"
-        f"Rust Status: {rust_status}\n"
-        f"Sustainability Repurpose Suggestion: {repurpose_suggestion}"
-    )
+    # Use simplified LLM interface for analysis
+    llm = ImageAnalysisLLM()
+    image_type, rust_marked_image, rust_percentage, rust_status = llm.analyze_image(image)
 
     # Open a new window for displaying analysis result
     llm_window = tk.Toplevel(root)
     llm_window.title("Image Analysis Result")
-    llm_window.geometry("600x400")
+    llm_window.geometry("800x600")
     llm_window.config(bg="#f0f4f8")
 
-    result_label = tk.Label(llm_window, text=result_text, 
-                            font=("Helvetica", 14), bg="#f0f4f8", fg="#333", justify="left", anchor="nw")
-    result_label.pack(expand=True, fill="both", padx=20, pady=20)
+    # Display the rust-marked image
+    rust_marked_image = rust_marked_image.resize((400, 300), Image.LANCZOS)
+    img_tk = ImageTk.PhotoImage(rust_marked_image)
+    image_label = tk.Label(llm_window, image=img_tk, bg="#f0f4f8")
+    image_label.image = img_tk  # Keep a reference
+    image_label.pack(side=tk.LEFT, padx=20, pady=20)
 
-    def close_llm():
-        llm_window.destroy()
+    # Create a frame for text info on the right
+    info_frame = tk.Frame(llm_window, bg="#f0f4f8")
+    info_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-    close_button = tk.Button(llm_window, text="Close", command=close_llm, 
+    # Display the image type text
+    type_label = tk.Label(info_frame, text=f"Image Type: {image_type}", 
+                          font=("Helvetica", 18, "bold"), bg="#f0f4f8", fg="#333", anchor="w")
+    type_label.pack(fill=tk.X, pady=(0, 15))
+
+    # Display rust percentage
+    rust_percentage_label = tk.Label(info_frame, text=f"Rust Percentage: {rust_percentage:.2f}%", 
+                                    font=("Helvetica", 16), bg="#f0f4f8", fg="#333", anchor="w")
+    rust_percentage_label.pack(fill=tk.X, pady=5)
+
+    # Display rust status
+    rust_status_label = tk.Label(info_frame, text=f"Rust Status: {rust_status}", 
+                                 font=("Helvetica", 16, "bold"), bg="#f0f4f8", fg="#b22222", anchor="w")
+    rust_status_label.pack(fill=tk.X, pady=5)
+
+    # Close button at bottom right
+    close_button = tk.Button(info_frame, text="Close", command=llm_window.destroy, 
                              font=("Helvetica", 12), bg="#1976d2", fg="white", relief="raised", bd=3, cursor="hand2")
-    close_button.pack(pady=10)
+    close_button.pack(side=tk.BOTTOM, pady=20)
 
 button_style = {
     "width": 20,
