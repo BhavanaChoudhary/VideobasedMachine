@@ -1,6 +1,6 @@
-opencv-python-headless
-
+opencv-python
 torch
 torchvision
 numpy
 Pillow
+streamlit
